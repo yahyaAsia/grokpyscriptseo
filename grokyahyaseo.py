@@ -6,6 +6,9 @@ from collections import Counter
 import re
 from typing import Dict, List, Optional
 import logging
+import time
+import io
+import pandas as pd
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,11 +20,14 @@ class SEOTool:
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         self.soup = None
         self.content = None
+        self.response_time = None
 
     def fetch_page(self) -> bool:
         try:
+            start_time = time.time()
             response = requests.get(self.url, headers=self.headers, timeout=10)
             response.raise_for_status()
+            self.response_time = time.time() - start_time
             self.content = response.text
             self.soup = BeautifulSoup(self.content, 'html.parser')
             logging.info(f"Successfully fetched {self.url}")
@@ -84,6 +90,25 @@ class SEOTool:
         audit_results['meta_description_length'] = f"Description length: {desc_length} (Ideal: 120-160)" if desc_length else "No meta description"
         return audit_results
 
+    def analyze_content_length(self) -> Dict[str, any]:
+        if not self.soup:
+            return {'word_count': 0}
+        text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        text = ' '.join(element.get_text() for element in text_elements)
+        words = re.findall(r'\b\w+\b', text)
+        return {'word_count': len(words)}
+
+    def analyze_internal_links(self) -> Dict[str, any]:
+        if not self.soup:
+            return {'internal_link_count': 0}
+        base_domain = re.match(r'https?://[^/]+', self.url).group(0)
+        links = self.soup.find_all('a', href=True)
+        internal_links = [link['href'] for link in links if link['href'].startswith(base_domain) or link['href'].startswith('/')]
+        return {'internal_link_count': len(internal_links)}
+
+    def check_page_speed(self) -> Dict[str, float]:
+        return {'response_time': self.response_time if self.response_time else 0.0}
+
     def run_seo_analysis(self) -> Dict[str, any]:
         if not self.fetch_page():
             return {'error': 'Failed to fetch page'}
@@ -91,11 +116,13 @@ class SEOTool:
             'meta_tags': self.extract_meta_tags(),
             'keyword_density': self.analyze_keyword_density(),
             'broken_links': self.check_broken_links(),
-            'on_page_audit': self.audit_on_page_seo()
+            'on_page_audit': self.audit_on_page_seo(),
+            'content_length': self.analyze_content_length(),
+            'internal_links': self.analyze_internal_links(),
+            'page_speed': self.check_page_speed()
         }
 
 def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
-    """Generate SEO recommendations based on analysis results."""
     recommendations = []
 
     # Meta Tags Recommendations
@@ -109,7 +136,7 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
     elif not (120 <= len(meta_tags['description']) <= 160):
         recommendations.append("Adjust meta description to 120-160 characters for best results.")
     if meta_tags['keywords'] == 'No keywords found':
-        recommendations.append("Add a meta keywords tag with 5-10 relevant terms (e.g., 'translation, localization').")
+        recommendations.append("Add a meta keywords tag with 5-10 relevant terms.")
 
     # Keyword Density Recommendations
     keyword_density = results['keyword_density']
@@ -125,7 +152,7 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
         for link in broken_links:
             recommendations.append(f"Fix broken link: {link['url']} (Status: {link['status']}).")
     else:
-        recommendations.append("No broken links found—great job! Consider adding internal links to related pages.")
+        recommendations.append("No broken links found—consider adding internal links to related pages.")
 
     # On-Page SEO Recommendations
     on_page_audit = results['on_page_audit']
@@ -137,20 +164,36 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
     missing_alt_count = int(on_page_audit['image_alt_status'].split()[0]) if 'missing' in on_page_audit['image_alt_status'] else 0
     if missing_alt_count > 0:
         recommendations.append(f"Add descriptive alt text to {missing_alt_count} images using relevant keywords.")
-    if 'No meta description' in on_page_audit['meta_description_length']:
-        recommendations.append("Add a meta description (120-160 characters) to improve click-through rates.")
+
+    # Content Length Recommendations
+    content_length = results['content_length']['word_count']
+    if content_length < 300:
+        recommendations.append("Increase content length to at least 300 words for better SEO.")
+    elif content_length < 800:
+        recommendations.append("Aim for 800+ words with valuable content to improve ranking potential.")
+
+    # Internal Links Recommendations
+    internal_links = results['internal_links']['internal_link_count']
+    if internal_links < 3:
+        recommendations.append("Add more internal links (at least 3) to related pages for better navigation.")
+
+    # Page Speed Recommendations
+    response_time = results['page_speed']['response_time']
+    if response_time > 2.0:
+        recommendations.append("Optimize page speed (current response time: {:.2f}s) - compress images, minify CSS/JS.")
+    elif response_time > 0:
+        recommendations.append("Page speed is decent ({:.2f}s), but test with Google PageSpeed Insights for further optimization.")
 
     # General Recommendations
-    recommendations.append("Check page load speed with Google PageSpeed Insights and optimize if needed.")
     recommendations.append("Ensure the page is mobile-friendly (test with Google’s Mobile-Friendly Test).")
-    recommendations.append("Add internal links to related pages and seek quality backlinks.")
+    recommendations.append("Seek quality backlinks to boost domain authority.")
 
     return recommendations
 
 # Streamlit Interface
 def main():
     st.title("Grok SEO Analysis Tool")
-    st.write("Enter a URL to perform an SEO audit and get optimization recommendations.")
+    st.write("Enter a URL to perform an advanced SEO audit and get optimization recommendations.")
 
     # Input URL
     url = st.text_input("Website URL", "https://example.com")
@@ -187,11 +230,44 @@ def main():
                 for key, value in results['on_page_audit'].items():
                     st.write(f"**{key.replace('_', ' ').capitalize()}**: {value}")
 
+                # Display Content Length
+                st.subheader("Content Length")
+                st.write(f"Word Count: {results['content_length']['word_count']}")
+
+                # Display Internal Links
+                st.subheader("Internal Links")
+                st.write(f"Internal Link Count: {results['internal_links']['internal_link_count']}")
+
+                # Display Page Speed
+                st.subheader("Page Speed")
+                st.write(f"Response Time: {results['page_speed']['response_time']:.2f} seconds")
+
                 # Display SEO Recommendations
                 st.subheader("SEO Recommendations")
                 recommendations = generate_seo_recommendations(results)
                 for rec in recommendations:
                     st.write(f"- {rec}")
+
+                # Export Results
+                st.subheader("Export Results")
+                export_data = {
+                    'Meta Tags': [f"{k}: {v}" for k, v in results['meta_tags'].items()],
+                    'Keyword Density': [f"{k}: {v:.2f}%" for k, v in results['keyword_density'].items()],
+                    'Broken Links': [f"{link['url']} (Status: {link['status']})" for link in results['broken_links']] or ['None'],
+                    'On-Page SEO': [f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in results['on_page_audit'].items()],
+                    'Content Length': [f"Word Count: {results['content_length']['word_count']}"],
+                    'Internal Links': [f"Count: {results['internal_links']['internal_link_count']}"],
+                    'Page Speed': [f"Response Time: {results['page_speed']['response_time']:.2f}s"],
+                    'Recommendations': recommendations
+                }
+                df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in export_data.items()]))
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    label="Download as CSV",
+                    data=csv,
+                    file_name=f"seo_analysis_{url.split('//')[1].replace('/', '_')}.csv",
+                    mime="text/csv"
+                )
 
 if __name__ == "__main__":
     main()
