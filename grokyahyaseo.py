@@ -9,6 +9,8 @@ import logging
 import time
 import io
 import pandas as pd
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class SEOTool:
     def __init__(self, url: str, api_key: Optional[str] = None):
         self.url = url
-        self.api_key = api_key
+        self.api_key = AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs  # Store the API key here
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         self.soup = None
         self.content = None
@@ -106,8 +108,21 @@ class SEOTool:
         internal_links = [link['href'] for link in links if link['href'].startswith(base_domain) or link['href'].startswith('/')]
         return {'internal_link_count': len(internal_links)}
 
-    def check_page_speed(self) -> Dict[str, float]:
-        return {'response_time': self.response_time if self.response_time else 0.0}
+    def check_page_speed(self) -> Dict[str, any]:
+        speed_data = {'response_time': self.response_time if self.response_time else 0.0}
+        if self.api_key: AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs  # Use the API key if provided
+            try:
+                service = build('pagespeedonline', 'v5', developerKey=self.api_key)
+                result = service.pagespeedapi().runpagespeed(url=self.url, strategy='desktop').execute()
+                lighthouse = result['lighthouseResult']
+                speed_data['performance_score'] = lighthouse['categories']['performance']['score'] * 100
+                speed_data['recommendations'] = [
+                    audit['title'] for audit in lighthouse['audits'].values() if 'title' in audit and audit.get('score', 1) < 0.9
+                ][:3]  # Top 3 issues
+            except HttpError as e:
+                logging.error(f"PageSpeed API error: {e}")
+                speed_data['error'] = "Failed to fetch PageSpeed data—check your API key."
+        return speed_data
 
     def run_seo_analysis(self) -> Dict[str, any]:
         if not self.fetch_page():
@@ -119,13 +134,11 @@ class SEOTool:
             'on_page_audit': self.audit_on_page_seo(),
             'content_length': self.analyze_content_length(),
             'internal_links': self.analyze_internal_links(),
-            'page_speed': self.check_page_speed()
+            'page_speed': self.check_page_speed()  # API key is already passed via self.api_key
         }
 
 def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
     recommendations = []
-
-    # Meta Tags Recommendations
     meta_tags = results['meta_tags']
     if meta_tags['title'] == 'No title found':
         recommendations.append("Add a unique title tag (50-60 characters) with primary keywords.")
@@ -138,7 +151,6 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
     if meta_tags['keywords'] == 'No keywords found':
         recommendations.append("Add a meta keywords tag with 5-10 relevant terms.")
 
-    # Keyword Density Recommendations
     keyword_density = results['keyword_density']
     top_keywords = list(keyword_density.keys())
     if top_keywords and all(kw in ['the', 'and', 'for', 'to', 'of'] for kw in top_keywords[:3]):
@@ -146,7 +158,6 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
     else:
         recommendations.append("Ensure primary keywords appear naturally in content (2-3% density) and in headings.")
 
-    # Broken Links Recommendations
     broken_links = results['broken_links']
     if broken_links:
         for link in broken_links:
@@ -154,7 +165,6 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
     else:
         recommendations.append("No broken links found—consider adding internal links to related pages.")
 
-    # On-Page SEO Recommendations
     on_page_audit = results['on_page_audit']
     h1_count = int(on_page_audit['h1_status'].split()[1]) if 'Found' in on_page_audit['h1_status'] else 0
     if h1_count == 0:
@@ -165,29 +175,30 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
     if missing_alt_count > 0:
         recommendations.append(f"Add descriptive alt text to {missing_alt_count} images using relevant keywords.")
 
-    # Content Length Recommendations
     content_length = results['content_length']['word_count']
     if content_length < 300:
         recommendations.append("Increase content length to at least 300 words for better SEO.")
     elif content_length < 800:
         recommendations.append("Aim for 800+ words with valuable content to improve ranking potential.")
 
-    # Internal Links Recommendations
     internal_links = results['internal_links']['internal_link_count']
     if internal_links < 3:
         recommendations.append("Add more internal links (at least 3) to related pages for better navigation.")
 
-    # Page Speed Recommendations
-    response_time = results['page_speed']['response_time']
-    if response_time > 2.0:
-        recommendations.append("Optimize page speed (current response time: {:.2f}s) - compress images, minify CSS/JS.")
-    elif response_time > 0:
-        recommendations.append("Page speed is decent ({:.2f}s), but test with Google PageSpeed Insights for further optimization.")
+    speed_data = results['page_speed']
+    if 'performance_score' in speed_data:
+        if speed_data['performance_score'] < 50:
+            recommendations.append("Improve page speed (Score: {:.0f}/100)—address recommendations below.".format(speed_data['performance_score']))
+        elif speed_data['performance_score'] < 90:
+            recommendations.append("Optimize page speed further (Score: {:.0f}/100) for better performance.".format(speed_data['performance_score']))
+        if speed_data.get('recommendations'):
+            recommendations.extend([f"PageSpeed Tip: {rec}" for rec in speed_data['recommendations']])
+    else:
+        if speed_data['response_time'] > 2.0:
+            recommendations.append("Optimize page speed (current response time: {:.2f}s) - compress images, minify CSS/JS.".format(speed_data['response_time']))
 
-    # General Recommendations
     recommendations.append("Ensure the page is mobile-friendly (test with Google’s Mobile-Friendly Test).")
     recommendations.append("Seek quality backlinks to boost domain authority.")
-
     return recommendations
 
 # Streamlit Interface
@@ -195,29 +206,28 @@ def main():
     st.title("Grok SEO Analysis Tool")
     st.write("Enter a URL to perform an advanced SEO audit and get optimization recommendations.")
 
-    # Input URL
+    # Input URL and API Key
     url = st.text_input("Website URL", "https://example.com")
+    api_key = st.text_input("Google PageSpeed API Key (optional)", type="password")  # API key input field
     analyze_button = st.button("Analyze")
 
     if analyze_button and url:
         with st.spinner("Analyzing..."):
-            seo_tool = SEOTool(url)
+            # Pass the API key to SEOTool
+            seo_tool = SEOTool(url, api_key=api_key if api_key else None)
             results = seo_tool.run_seo_analysis()
 
             if 'error' in results:
                 st.error(results['error'])
             else:
-                # Display Meta Tags
                 st.subheader("Meta Tags")
                 for key, value in results['meta_tags'].items():
                     st.write(f"**{key.capitalize()}**: {value}")
 
-                # Display Keyword Density
                 st.subheader("Top 10 Keywords (Density %)")
                 for keyword, density in results['keyword_density'].items():
                     st.write(f"{keyword}: {density:.2f}%")
 
-                # Display Broken Links
                 st.subheader("Broken Links")
                 if results['broken_links']:
                     for link in results['broken_links']:
@@ -225,24 +235,41 @@ def main():
                 else:
                     st.success("No broken links found!")
 
-                # Display On-Page SEO Audit
                 st.subheader("On-Page SEO Audit")
                 for key, value in results['on_page_audit'].items():
                     st.write(f"**{key.replace('_', ' ').capitalize()}**: {value}")
 
-                # Display Content Length
                 st.subheader("Content Length")
                 st.write(f"Word Count: {results['content_length']['word_count']}")
 
-                # Display Internal Links
                 st.subheader("Internal Links")
                 st.write(f"Internal Link Count: {results['internal_links']['internal_link_count']}")
 
                 # Display Page Speed
                 st.subheader("Page Speed")
-                st.write(f"Response Time: {results['page_speed']['response_time']:.2f} seconds")
+                speed_data = results['page_speed']
+                st.write(f"Response Time: {speed_data['response_time']:.2f} seconds")
+                if 'performance_score' in speed_data:
+                    st.write(f"PageSpeed Performance Score: {speed_data['performance_score']:.0f}/100")
+                    st.progress(int(speed_data['performance_score']))
+                    if speed_data['performance_score'] < 50:
+                        st.warning("Low performance score—optimization needed.")
+                    elif speed_data['performance_score'] < 90:
+                        st.info("Moderate performance—room for improvement.")
+                    else:
+                        st.success("Excellent performance!")
+                    if speed_data.get('recommendations'):
+                        st.write("**Optimization Suggestions:**")
+                        for rec in speed_data['recommendations']:
+                            st.write(f"- {rec}")
+                elif 'error' in speed_data:
+                    st.error(speed_data['error'])
+                else:
+                    st.info("Provide a PageSpeed API key for detailed analysis.")
+                    if speed_data['response_time'] > 2.0:
+                        st.warning("Response time exceeds 2 seconds—consider optimization.")
+                        st.write("- Compress images, minify CSS/JS, enable caching.")
 
-                # Display SEO Recommendations
                 st.subheader("SEO Recommendations")
                 recommendations = generate_seo_recommendations(results)
                 for rec in recommendations:
@@ -257,7 +284,7 @@ def main():
                     'On-Page SEO': [f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in results['on_page_audit'].items()],
                     'Content Length': [f"Word Count: {results['content_length']['word_count']}"],
                     'Internal Links': [f"Count: {results['internal_links']['internal_link_count']}"],
-                    'Page Speed': [f"Response Time: {results['page_speed']['response_time']:.2f}s"],
+                    'Page Speed': [f"Response Time: {speed_data['response_time']:.2f}s"] + ([f"Performance Score: {speed_data['performance_score']:.0f}/100"] if 'performance_score' in speed_data else []),
                     'Recommendations': recommendations
                 }
                 df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in export_data.items()]))
