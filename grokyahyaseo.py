@@ -94,10 +94,63 @@ class SEOTool:
             'on_page_audit': self.audit_on_page_seo()
         }
 
+def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
+    """Generate SEO recommendations based on analysis results."""
+    recommendations = []
+
+    # Meta Tags Recommendations
+    meta_tags = results['meta_tags']
+    if meta_tags['title'] == 'No title found':
+        recommendations.append("Add a unique title tag (50-60 characters) with primary keywords.")
+    elif len(meta_tags['title']) > 60:
+        recommendations.append("Shorten the title tag to 50-60 characters for optimal SEO.")
+    if meta_tags['description'] == 'No description found':
+        recommendations.append("Add a meta description (120-160 characters) with a call-to-action.")
+    elif not (120 <= len(meta_tags['description']) <= 160):
+        recommendations.append("Adjust meta description to 120-160 characters for best results.")
+    if meta_tags['keywords'] == 'No keywords found':
+        recommendations.append("Add a meta keywords tag with 5-10 relevant terms (e.g., 'translation, localization').")
+
+    # Keyword Density Recommendations
+    keyword_density = results['keyword_density']
+    top_keywords = list(keyword_density.keys())
+    if top_keywords and all(kw in ['the', 'and', 'for', 'to', 'of'] for kw in top_keywords[:3]):
+        recommendations.append("Optimize content with specific keywords relevant to your topic (aim for 2-3% density).")
+    else:
+        recommendations.append("Ensure primary keywords appear naturally in content (2-3% density) and in headings.")
+
+    # Broken Links Recommendations
+    broken_links = results['broken_links']
+    if broken_links:
+        for link in broken_links:
+            recommendations.append(f"Fix broken link: {link['url']} (Status: {link['status']}).")
+    else:
+        recommendations.append("No broken links found—great job! Consider adding internal links to related pages.")
+
+    # On-Page SEO Recommendations
+    on_page_audit = results['on_page_audit']
+    h1_count = int(on_page_audit['h1_status'].split()[1]) if 'Found' in on_page_audit['h1_status'] else 0
+    if h1_count == 0:
+        recommendations.append("Add one H1 tag with your primary keyword.")
+    elif h1_count > 1:
+        recommendations.append("Reduce to one H1 tag per page for SEO best practices.")
+    missing_alt_count = int(on_page_audit['image_alt_status'].split()[0]) if 'missing' in on_page_audit['image_alt_status'] else 0
+    if missing_alt_count > 0:
+        recommendations.append(f"Add descriptive alt text to {missing_alt_count} images using relevant keywords.")
+    if 'No meta description' in on_page_audit['meta_description_length']:
+        recommendations.append("Add a meta description (120-160 characters) to improve click-through rates.")
+
+    # General Recommendations
+    recommendations.append("Check page load speed with Google PageSpeed Insights and optimize if needed.")
+    recommendations.append("Ensure the page is mobile-friendly (test with Google’s Mobile-Friendly Test).")
+    recommendations.append("Add internal links to related pages and seek quality backlinks.")
+
+    return recommendations
+
 # Streamlit Interface
 def main():
     st.title("Grok SEO Analysis Tool")
-    st.write("Enter a URL to perform an SEO audit.")
+    st.write("Enter a URL to perform an SEO audit and get optimization recommendations.")
 
     # Input URL
     url = st.text_input("Website URL", "https://example.com")
@@ -133,6 +186,12 @@ def main():
                 st.subheader("On-Page SEO Audit")
                 for key, value in results['on_page_audit'].items():
                     st.write(f"**{key.replace('_', ' ').capitalize()}**: {value}")
+
+                # Display SEO Recommendations
+                st.subheader("SEO Recommendations")
+                recommendations = generate_seo_recommendations(results)
+                for rec in recommendations:
+                    st.write(f"- {rec}")
 
 if __name__ == "__main__":
     main()
