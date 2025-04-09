@@ -96,7 +96,7 @@ class SEOTool:
 
 # Streamlit Interface
 def main():
-    st.title("SEO Analysis Tool")
+    st.title("Grok SEO Analysis Tool")
     st.write("Enter a URL to perform an SEO audit.")
 
     # Input URL
