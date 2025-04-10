@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class SEOTool:
     def __init__(self, url: str, api_key: Optional[str] = None):
         self.url = url
-        self.api_key = AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs  # Store the API key here
+        self.api_key = api_key  # Use the API key passed from Streamlit input
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         self.soup = None
         self.content = None
@@ -110,7 +110,7 @@ class SEOTool:
 
     def check_page_speed(self) -> Dict[str, any]:
         speed_data = {'response_time': self.response_time if self.response_time else 0.0}
-        if self.api_key: AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs  # Use the API key if provided
+        if self.api_key:  # Use the API key if provided
             try:
                 service = build('pagespeedonline', 'v5', developerKey=self.api_key)
                 result = service.pagespeedapi().runpagespeed(url=self.url, strategy='desktop').execute()
@@ -134,7 +134,7 @@ class SEOTool:
             'on_page_audit': self.audit_on_page_seo(),
             'content_length': self.analyze_content_length(),
             'internal_links': self.analyze_internal_links(),
-            'page_speed': self.check_page_speed()  # API key is already passed via self.api_key
+            'page_speed': self.check_page_speed()
         }
 
 def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
