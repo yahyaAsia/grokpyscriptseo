@@ -63,20 +63,20 @@ class SEOTool:
         return dict(sorted(keyword_density.items(), key=lambda x: x[1], reverse=True)[:10])
 
     def check_broken_links(self) -> List[Dict[str, str]]:
-        broken_links = []
-        if not self.soup:
-            return broken_links
-        links = self.soup.find_all('a', href=True)
-        for link in links:
-            href = link['href']
-            full_url = urljoin(self.url, href)
-            try:
-                response = requests.head(full_url, headers=self.headers, timeout=5, allow_redirects=True)
-                if response.status_code >= 400:
-                    broken_links.append({'url': full_url, 'status': response.status_code})
-            except requests.RequestException:
-                broken_links.append({'url': full_url, 'status': 'Failed to connect'})
+    broken_links = []
+    if not self.soup:
         return broken_links
+    links = self.soup.find_all('a', href=True)[:10]  # Limit to first 10 links
+    for link in links:
+        href = link['href']
+        full_url = urljoin(self.url, href)
+        try:
+            response = requests.head(full_url, headers=self.headers, timeout=2, allow_redirects=True)  # Reduce timeout
+            if response.status_code >= 400:
+                broken_links.append({'url': full_url, 'status': response.status_code})
+        except requests.RequestException:
+            broken_links.append({'url': full_url, 'status': 'Failed to connect'})
+    return broken_links
 
     def audit_on_page_seo(self) -> Dict[str, str]:
         audit_results = {}
