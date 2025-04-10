@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class SEOTool:
     def __init__(self, url: str, api_key: Optional[str] = None):
         self.url = url
-        self.api_key = api_key  # Use the API key passed from Streamlit input
+        self.api_key = api_key  # API key from Streamlit input (e.g., AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs)
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         self.soup = None
         self.content = None
@@ -110,7 +110,7 @@ class SEOTool:
 
     def check_page_speed(self) -> Dict[str, any]:
         speed_data = {'response_time': self.response_time if self.response_time else 0.0}
-        if self.api_key:  # Use the API key if provided
+        if self.api_key:  # Use the provided API key (e.g., AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs)
             try:
                 service = build('pagespeedonline', 'v5', developerKey=self.api_key)
                 result = service.pagespeedapi().runpagespeed(url=self.url, strategy='desktop').execute()
@@ -208,12 +208,11 @@ def main():
 
     # Input URL and API Key
     url = st.text_input("Website URL", "https://example.com")
-    api_key = st.text_input("Google PageSpeed API Key (optional)", type="password")  # API key input field
+    api_key = st.text_input("Google PageSpeed API Key (optional)", value="AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs", type="password")  # Pre-fill with your API key
     analyze_button = st.button("Analyze")
 
     if analyze_button and url:
         with st.spinner("Analyzing..."):
-            # Pass the API key to SEOTool
             seo_tool = SEOTool(url, api_key=api_key if api_key else None)
             results = seo_tool.run_seo_analysis()
 
@@ -245,7 +244,6 @@ def main():
                 st.subheader("Internal Links")
                 st.write(f"Internal Link Count: {results['internal_links']['internal_link_count']}")
 
-                # Display Page Speed
                 st.subheader("Page Speed")
                 speed_data = results['page_speed']
                 st.write(f"Response Time: {speed_data['response_time']:.2f} seconds")
@@ -275,7 +273,6 @@ def main():
                 for rec in recommendations:
                     st.write(f"- {rec}")
 
-                # Export Results
                 st.subheader("Export Results")
                 export_data = {
                     'Meta Tags': [f"{k}: {v}" for k, v in results['meta_tags'].items()],
