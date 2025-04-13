@@ -53,10 +53,15 @@ class SEOTool:
 
     def analyze_keyword_density(self, min_length: int = 3) -> Dict[str, float]:
         if not self.soup:
+            logging.warning("No page content available for keyword analysis")
             return {}
         if not hasattr(self, 'page_text'):
             text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'])
-            self.page_text = ' '.join(element.get_text().lower() for element in text_elements)
+            self.page_text = ' '.join(element.get_text().lower() for element in text_elements if element.get_text()) or ""
+            logging.info(f"Extracted {len(self.page_text)} characters for keyword analysis")
+        if not self.page_text:
+            logging.warning("No text content found for keyword analysis")
+            return {}
         words = re.findall(r'\b\w+\b', self.page_text)
         words = [word for word in words if len(word) >= min_length and word.isalpha()]
         word_counts = Counter(words)
@@ -99,7 +104,7 @@ class SEOTool:
             return {'word_count': 0}
         if not hasattr(self, 'page_text'):
             text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            self.page_text = ' '.join(element.get_text() for element in text_elements)
+            self.page_text = ' '.join(element.get_text() for element in text_elements if element.get_text()) or ""
         words = re.findall(r'\b\w+\b', self.page_text)
         return {'word_count': len(words)}
 
