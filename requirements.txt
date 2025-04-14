@@ -1,6 +1,6 @@
-streamlit==1.32.0
-requests==2.31.0
-beautifulsoup4==4.12.3
-pandas==2.2.2
-google-api-python-client==2.100.0
-google-auth==2.23.0
+streamlit
+requests
+beautifulsoup4
+pandas
+google-api-python-client
+nltk
