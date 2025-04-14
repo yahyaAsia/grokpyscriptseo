@@ -13,10 +13,10 @@ from googleapiclient.errors import HttpError
 import nltk
 from nltk.corpus import stopwords
 
-# Download stopwords
+# Download stopwords for first run
 nltk.download('stopwords')
 
-# Set up logging
+# Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class SEOTool:
@@ -37,7 +37,6 @@ class SEOTool:
             self.response_time = time.time() - start_time
             self.content = response.text
             self.soup = BeautifulSoup(self.content, 'html.parser')
-            logging.info(f"Fetched {self.url} successfully")
             return True
         except requests.RequestException as e:
             logging.error(f"Error fetching {self.url}: {e}")
@@ -65,7 +64,7 @@ class SEOTool:
         stop_words = set(stopwords.words('english'))
         text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'span'])
         text = ' '.join(el.get_text().lower() for el in text_elements)
-        words = re.findall(r'\\b\\w+\\b', text)
+        words = re.findall(r'\b\w+\b', text)
         words = [w for w in words if len(w) >= min_length and w not in stop_words]
         count = Counter(words)
         total = sum(count.values())
@@ -104,7 +103,7 @@ class SEOTool:
             return {'word_count': 0}
         tags = self.soup.find_all(['p', 'h1', 'h2', 'h3'])
         text = ' '.join(t.get_text() for t in tags)
-        words = re.findall(r'\\b\\w+\\b', text)
+        words = re.findall(r'\b\w+\b', text)
         return {'word_count': len(words)}
 
     def analyze_internal_links(self) -> Dict[str, int]:
@@ -147,40 +146,42 @@ class SEOTool:
 
 def main():
     st.set_page_config(page_title='SEO Analyzer', layout='wide')
-    st.title(\"🔍 SEO Audit Tool\")
-    url = st.text_input(\"Enter URL:\", \"https://example.com\")
-    api_key = st.text_input(\"Google PageSpeed API Key (optional):\", type='password')
-    strategy = st.selectbox(\"Choose PageSpeed Strategy\", [\"desktop\", \"mobile\"])
+    st.title("🔍 SEO Audit Tool")
+    url = st.text_input("Enter URL:", "https://example.com")
+    api_key = st.text_input("Google PageSpeed API Key (optional):", type='password')
+    strategy = st.selectbox("Choose PageSpeed Strategy", ["desktop", "mobile"])
 
-    if st.button(\"Run SEO Audit\") and url:
+    if st.button("Run SEO Audit") and url:
         tool = SEOTool(url, api_key=api_key, strategy=strategy)
-        with st.spinner(\"Analyzing...\"):
+        with st.spinner("Analyzing..."):
             result = tool.run_seo_analysis()
         if 'error' in result:
             st.error(result['error'])
             return
 
-        st.subheader(\"Meta Tags\")
+        st.subheader("Meta Tags")
         st.json(result['meta_tags'])
 
-        st.subheader(\"Top Keywords\")
+        st.subheader("Top Keywords")
         st.write(result['keyword_density'])
 
-        st.subheader(\"Broken Links\")
+        st.subheader("Broken Links")
         if result['broken_links']:
             st.write(result['broken_links'])
         else:
-            st.success(\"No broken links found.\")
+            st.success("No broken links found.")
 
-        st.subheader(\"On-Page SEO Check\")
+        st.subheader("On-Page SEO Check")
         st.json(result['on_page_audit'])
 
-        st.subheader(\"Content Length\")
-        st.write(f\"Word Count: {result['content_length']['word_count']}\")
-        st.subheader(\"Internal Links\")
-        st.write(f\"Internal Links: {result['internal_links']['internal_link_count']}\")
-        st.subheader(\"Page Speed\")
+        st.subheader("Content Length")
+        st.write(f"Word Count: {result['content_length']['word_count']}")
+
+        st.subheader("Internal Links")
+        st.write(f"Internal Links: {result['internal_links']['internal_link_count']}")
+
+        st.subheader("Page Speed")
         st.write(result['page_speed'])
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
