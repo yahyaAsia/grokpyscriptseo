@@ -144,6 +144,41 @@ class SEOTool:
 
 # -------------------- STREAMLIT UI -------------------------
 
+def generate_todo_list(result):
+    todos = []
+    meta = result['meta_tags']
+    audit = result['on_page_audit']
+    word_count = result['content_length']['word_count']
+    speed = result['page_speed']
+
+    if meta['keywords'] == 'No keywords found':
+        todos.append("➕ Add a meta keywords tag (optional).")
+
+    if 'No H1' in audit['h1_status']:
+        todos.append("❌ Add at least one H1 tag with a primary keyword.")
+    elif 'Found' in audit['h1_status']:
+        h1_count = int(audit['h1_status'].split()[1])
+        if h1_count > 1:
+            todos.append("⚠️ Reduce H1 tags to only one.")
+
+    if 'missing alt' in audit['image_alt_status']:
+        todos.append("🖼️ Add alt text to all images for accessibility and SEO.")
+
+    if word_count < 300:
+        todos.append("✍️ Add more content — aim for at least 800 words.")
+
+    if result['broken_links']:
+        todos.append("🔗 Fix broken or redirected external/internal links.")
+
+    if 'performance_score' in speed:
+        if speed['performance_score'] < 90:
+            todos.append("🚀 Improve PageSpeed score — optimize images & scripts.")
+    else:
+        if speed['response_time'] > 2.0:
+            todos.append("⚠️ Page load time is slow — reduce to under 2s.")
+
+    return todos
+
 def main():
     st.set_page_config(page_title='SEO Analyzer', layout='wide')
     st.title("🔍 SEO Audit Tool")
@@ -159,29 +194,48 @@ def main():
             st.error(result['error'])
             return
 
-        st.subheader("Meta Tags")
-        st.json(result['meta_tags'])
+        col1, col2 = st.columns(2)
 
-        st.subheader("Top Keywords")
-        st.write(result['keyword_density'])
+        with col1:
+            st.subheader("Meta Tags")
+            st.json(result['meta_tags'])
 
-        st.subheader("Broken Links")
-        if result['broken_links']:
-            st.write(result['broken_links'])
-        else:
-            st.success("No broken links found.")
+        with col2:
+            st.subheader("On-Page SEO")
+            st.json(result['on_page_audit'])
 
-        st.subheader("On-Page SEO Check")
-        st.json(result['on_page_audit'])
+        with st.expander("Top Keywords"):
+            st.write(result['keyword_density'])
 
-        st.subheader("Content Length")
-        st.write(f"Word Count: {result['content_length']['word_count']}")
+        with st.expander("Broken Links"):
+            if result['broken_links']:
+                for link in result['broken_links']:
+                    st.markdown(f"- 🔗 `{link['url']}` — ❌ Status: {link['status']}")
+            else:
+                st.success("No broken links found.")
 
-        st.subheader("Internal Links")
-        st.write(f"Internal Links: {result['internal_links']['internal_link_count']}")
+        st.subheader("Content & Internal Links")
+        st.write(f"📄 Word Count: **{result['content_length']['word_count']}**")
+        st.write(f"🔗 Internal Links: **{result['internal_links']['internal_link_count']}**")
 
         st.subheader("Page Speed")
-        st.write(result['page_speed'])
+        st.write(f"⏱️ Response Time: {result['page_speed']['response_time']} seconds")
+        if 'performance_score' in result['page_speed']:
+            score = result['page_speed']['performance_score']
+            st.metric("PageSpeed Score", f"{score}/100")
+            st.progress(int(score))
+            if result['page_speed'].get('recommendations'):
+                st.write("Optimization Suggestions:")
+                for tip in result['page_speed']['recommendations']:
+                    st.markdown(f"- ⚡ {tip}")
+
+        st.subheader("📋 SEO To-Do List")
+        todo_list = generate_todo_list(result)
+        if todo_list:
+            for task in todo_list:
+                st.markdown(f"- {task}")
+        else:
+            st.success("Your page is in excellent SEO shape! ✅")
 
 if __name__ == "__main__":
     main()
