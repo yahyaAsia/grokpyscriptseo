@@ -101,10 +101,15 @@ class SEOTool:
 
     def analyze_content_length(self) -> Dict[str, any]:
         if not self.soup:
+            logging.warning("No page content available for content length analysis")
             return {'word_count': 0}
         if not hasattr(self, 'page_text'):
             text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
             self.page_text = ' '.join(element.get_text() for element in text_elements if element.get_text()) or ""
+            logging.info(f"Extracted {len(self.page_text)} characters for content length analysis")
+        if not self.page_text:
+            logging.warning("No text content found for content length analysis")
+            return {'word_count': 0}
         words = re.findall(r'\b\w+\b', self.page_text)
         return {'word_count': len(words)}
 
@@ -194,7 +199,20 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
         recommendations.append("Add more internal links (at least 3) to related pages for better navigation.")
 
     speed_data = results['page_speed']
-    if 'performance_score' in speed_data:
+    if 'rodyahyaseo.py", line 304, in <module>
+    main()
+File "/mount/src/grokpyscriptseo/grokyahyaseo.py", line 224, in main
+    results = seo_tool.run_seo_analysis()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/mount/src/grokpyscriptseo/grokyahyaseo.py", line 143, in run_seo_analysis
+    'content_length': self.analyze_content_length(),
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/mount/src/grokpyscriptseo/grokyahyaseo.py", line 108, in analyze_content_length
+    words = re.findall(r'\b\w+\b', self.page_text)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/usr/local/lib/python3.12/re/__init__.py", line 217, in findall
+    return _compile(pattern, flags).findall(string)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^performance_score' in speed_data:
         if speed_data['performance_score'] < 50:
             recommendations.append(f"Improve page speed (Score: {speed_data['performance_score']:.0f}/100)—address recommendations below.")
         elif speed_data['performance_score'] < 90:
