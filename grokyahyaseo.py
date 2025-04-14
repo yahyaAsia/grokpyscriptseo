@@ -18,12 +18,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class SEOTool:
     def __init__(self, url: str, api_key: Optional[str] = None):
         self.url = url
-        self.api_key = api_key
+        self.api_key = api_key  # Store the API key here
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         self.soup = None
         self.content = None
         self.response_time = None
-        self.page_text = None  # Cache for text content
 
     def fetch_page(self) -> bool:
         try:
@@ -53,16 +52,10 @@ class SEOTool:
 
     def analyze_keyword_density(self, min_length: int = 3) -> Dict[str, float]:
         if not self.soup:
-            logging.warning("No page content available for keyword analysis")
             return {}
-        if not hasattr(self, 'page_text'):
-            text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'])
-            self.page_text = ' '.join(element.get_text().lower() for element in text_elements if element.get_text()) or ""
-            logging.info(f"Extracted {len(self.page_text)} characters for keyword analysis")
-        if not self.page_text:
-            logging.warning("No text content found for keyword analysis")
-            return {}
-        words = re.findall(r'\b\w+\b', self.page_text)
+        text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'])
+        text = ' '.join(element.get_text().lower() for element in text_elements)
+        words = re.findall(r'\b\w+\b', text)
         words = [word for word in words if len(word) >= min_length and word.isalpha()]
         word_counts = Counter(words)
         total_words = len(words)
@@ -73,12 +66,12 @@ class SEOTool:
         broken_links = []
         if not self.soup:
             return broken_links
-        links = self.soup.find_all('a', href=True)[:10]
+        links = self.soup.find_all('a', href=True)
         for link in links:
             href = link['href']
             full_url = urljoin(self.url, href)
             try:
-                response = requests.head(full_url, headers=self.headers, timeout=2, allow_redirects=True)
+                response = requests.head(full_url, headers=self.headers, timeout=5, allow_redirects=True)
                 if response.status_code >= 400:
                     broken_links.append({'url': full_url, 'status': response.status_code})
             except requests.RequestException:
@@ -90,27 +83,21 @@ class SEOTool:
         if not self.soup:
             return audit_results
         h1_tags = self.soup.find_all('h1')
-        audit_results['h1_status'] = f"Found {len(h1_tags)} H1 tags" if h1_tags else 'No H1 tag found'
+        audit_results['h1_status'] = f"Found {len(h1_tags)} H1 tags" if h1_tags else "No H1 tag found"
         images = self.soup.find_all('img')
         missing_alt = [img for img in images if not img.get('alt')]
-        audit_results['image_alt_status'] = f"{len(missing_alt)} images missing alt text" if missing_alt else 'All images have alt text'
+        audit_results['image_alt_status'] = f"{len(missing_alt)} images missing alt text" if missing_alt else "All images have alt text"
         meta_desc = self.extract_meta_tags().get('description', '')
         desc_length = len(meta_desc) if meta_desc != 'No description found' else 0
-        audit_results['meta_description_length'] = f"Description length: {desc_length} (Ideal: 120-160)" if desc_length else 'No meta description'
+        audit_results['meta_description_length'] = f"Description length: {desc_length} (Ideal: 120-160)" if desc_length else "No meta description"
         return audit_results
 
     def analyze_content_length(self) -> Dict[str, any]:
         if not self.soup:
-            logging.warning("No page content available for content length analysis")
             return {'word_count': 0}
-        if not hasattr(self, 'page_text'):
-            text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            self.page_text = ' '.join(element.get_text() for element in text_elements if element.get_text()) or ""
-            logging.info(f"Extracted {len(self.page_text)} characters for content length analysis")
-        if not self.page_text:
-            logging.warning("No text content found for content length analysis")
-            return {'word_count': 0}
-        words = re.findall(r'\b\w+\b', self.page_text)
+        text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        text = ' '.join(element.get_text() for element in text_elements)
+        words = re.findall(r'\b\w+\b', text)
         return {'word_count': len(words)}
 
     def analyze_internal_links(self) -> Dict[str, any]:
@@ -123,7 +110,7 @@ class SEOTool:
 
     def check_page_speed(self) -> Dict[str, any]:
         speed_data = {'response_time': self.response_time if self.response_time else 0.0}
-        if self.api_key:
+        if self.api_key: AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs # Use the API key if provided
             try:
                 service = build('pagespeedonline', 'v5', developerKey=self.api_key)
                 result = service.pagespeedapi().runpagespeed(url=self.url, strategy='desktop').execute()
@@ -131,7 +118,7 @@ class SEOTool:
                 speed_data['performance_score'] = lighthouse['categories']['performance']['score'] * 100
                 speed_data['recommendations'] = [
                     audit['title'] for audit in lighthouse['audits'].values() if 'title' in audit and audit.get('score', 1) < 0.9
-                ][:3]
+                ][:3]  # Top 3 issues
             except HttpError as e:
                 logging.error(f"PageSpeed API error: {e}")
                 speed_data['error'] = "Failed to fetch PageSpeed data—check your API key."
@@ -147,7 +134,7 @@ class SEOTool:
             'on_page_audit': self.audit_on_page_seo(),
             'content_length': self.analyze_content_length(),
             'internal_links': self.analyze_internal_links(),
-            'page_speed': self.check_page_speed()
+            'page_speed': self.check_page_speed()  # API key is already passed via self.api_key
         }
 
 def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
@@ -199,46 +186,35 @@ def generate_seo_recommendations(results: Dict[str, any]) -> List[str]:
         recommendations.append("Add more internal links (at least 3) to related pages for better navigation.")
 
     speed_data = results['page_speed']
-    if 'rodyahyaseo.py", line 304, in <module>
-    main()
-File "/mount/src/grokpyscriptseo/grokyahyaseo.py", line 224, in main
-    results = seo_tool.run_seo_analysis()
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/mount/src/grokpyscriptseo/grokyahyaseo.py", line 143, in run_seo_analysis
-    'content_length': self.analyze_content_length(),
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/mount/src/grokpyscriptseo/grokyahyaseo.py", line 108, in analyze_content_length
-    words = re.findall(r'\b\w+\b', self.page_text)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-File "/usr/local/lib/python3.12/re/__init__.py", line 217, in findall
-    return _compile(pattern, flags).findall(string)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^performance_score' in speed_data:
+    if 'performance_score' in speed_data:
         if speed_data['performance_score'] < 50:
-            recommendations.append(f"Improve page speed (Score: {speed_data['performance_score']:.0f}/100)—address recommendations below.")
+            recommendations.append("Improve page speed (Score: {:.0f}/100)—address recommendations below.".format(speed_data['performance_score']))
         elif speed_data['performance_score'] < 90:
-            recommendations.append(f"Optimize page speed further (Score: {speed_data['performance_score']:.0f}/100) for better performance.")
+            recommendations.append("Optimize page speed further (Score: {:.0f}/100) for better performance.".format(speed_data['performance_score']))
         if speed_data.get('recommendations'):
             recommendations.extend([f"PageSpeed Tip: {rec}" for rec in speed_data['recommendations']])
     else:
         if speed_data['response_time'] > 2.0:
-            recommendations.append(f"Optimize page speed (current response time: {speed_data['response_time']:.2f}s) - compress images, minify CSS/JS.")
+            recommendations.append("Optimize page speed (current response time: {:.2f}s) - compress images, minify CSS/JS.".format(speed_data['response_time']))
 
     recommendations.append("Ensure the page is mobile-friendly (test with Google’s Mobile-Friendly Test).")
     recommendations.append("Seek quality backlinks to boost domain authority.")
     return recommendations
 
+# Streamlit Interface
 def main():
     st.title("Grok SEO Analysis Tool")
     st.write("Enter a URL to perform an advanced SEO audit and get optimization recommendations.")
 
+    # Input URL and API Key
     url = st.text_input("Website URL", "https://example.com")
-    api_key = st.text_input("Google PageSpeed API Key (optional)", value="AIzaSyC_wiEhnXkOTLf8RCTCcv8gIOVQgRLakGs", type="password")
-    run_pagespeed = st.checkbox("Run PageSpeed Analysis (may take extra time)", value=False)
+    api_key = st.text_input("Google PageSpeed API Key (optional)", type="password")  # API key input field
     analyze_button = st.button("Analyze")
 
     if analyze_button and url:
         with st.spinner("Analyzing..."):
-            seo_tool = SEOTool(url, api_key=api_key if api_key and run_pagespeed else None)
+            # Pass the API key to SEOTool
+            seo_tool = SEOTool(url, api_key=api_key if api_key else None)
             results = seo_tool.run_seo_analysis()
 
             if 'error' in results:
@@ -269,6 +245,7 @@ def main():
                 st.subheader("Internal Links")
                 st.write(f"Internal Link Count: {results['internal_links']['internal_link_count']}")
 
+                # Display Page Speed
                 st.subheader("Page Speed")
                 speed_data = results['page_speed']
                 st.write(f"Response Time: {speed_data['response_time']:.2f} seconds")
@@ -288,7 +265,7 @@ def main():
                 elif 'error' in speed_data:
                     st.error(speed_data['error'])
                 else:
-                    st.info("PageSpeed skipped or no API key provided.")
+                    st.info("Provide a PageSpeed API key for detailed analysis.")
                     if speed_data['response_time'] > 2.0:
                         st.warning("Response time exceeds 2 seconds—consider optimization.")
                         st.write("- Compress images, minify CSS/JS, enable caching.")
@@ -298,6 +275,7 @@ def main():
                 for rec in recommendations:
                     st.write(f"- {rec}")
 
+                # Export Results
                 st.subheader("Export Results")
                 export_data = {
                     'Meta Tags': [f"{k}: {v}" for k, v in results['meta_tags'].items()],
