@@ -7,14 +7,13 @@ import re
 from typing import Dict, List, Optional
 import logging
 import time
-import io
 import pandas as pd
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import nltk
 from nltk.corpus import stopwords
 
-# Download NLTK stopwords
+# Download stopwords
 nltk.download('stopwords')
 
 # Set up logging
@@ -25,7 +24,7 @@ class SEOTool:
         self.url = url
         self.api_key = api_key
         self.strategy = strategy
-        self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        self.headers = {'User-Agent': 'Mozilla/5.0'}
         self.soup = None
         self.content = None
         self.response_time = None
@@ -38,10 +37,10 @@ class SEOTool:
             self.response_time = time.time() - start_time
             self.content = response.text
             self.soup = BeautifulSoup(self.content, 'html.parser')
-            logging.info(f"Successfully fetched {self.url}")
+            logging.info(f"Fetched {self.url} successfully")
             return True
         except requests.RequestException as e:
-            logging.error(f"Failed to fetch {self.url}: {e}")
+            logging.error(f"Error fetching {self.url}: {e}")
             return False
 
     def extract_meta_tags(self) -> Dict[str, str]:
@@ -50,95 +49,90 @@ class SEOTool:
             return meta_data
         title_tag = self.soup.find('title')
         meta_data['title'] = title_tag.text.strip() if title_tag else 'No title found'
-        meta_desc = self.soup.find('meta', attrs={'name': re.compile('description', re.I)})
-        meta_data['description'] = meta_desc['content'].strip() if meta_desc and 'content' in meta_desc.attrs else 'No description found'
-        meta_keywords = self.soup.find('meta', attrs={'name': re.compile('keywords', re.I)})
-        meta_data['keywords'] = meta_keywords['content'].strip() if meta_keywords and 'content' in meta_keywords.attrs else 'No keywords found'
+        desc_tag = self.soup.find('meta', attrs={'name': re.compile('description', re.I)})
+        meta_data['description'] = desc_tag['content'].strip() if desc_tag and 'content' in desc_tag.attrs else 'No description found'
+        keywords_tag = self.soup.find('meta', attrs={'name': re.compile('keywords', re.I)})
+        meta_data['keywords'] = keywords_tag['content'].strip() if keywords_tag and 'content' in keywords_tag.attrs else 'No keywords found'
+        canonical = self.soup.find('link', rel='canonical')
+        meta_data['canonical'] = canonical['href'] if canonical else 'No canonical tag found'
         robots_tag = self.soup.find('meta', attrs={'name': 'robots'})
         meta_data['robots'] = robots_tag['content'] if robots_tag else 'No robots tag found'
-        canonical_tag = self.soup.find('link', rel='canonical')
-        meta_data['canonical'] = canonical_tag['href'] if canonical_tag else 'No canonical tag found'
         return meta_data
 
-    def analyze_keyword_density(self, min_length: int = 3) -> Dict[str, float]:
+    def analyze_keyword_density(self, min_length=3) -> Dict[str, float]:
         if not self.soup:
             return {}
         stop_words = set(stopwords.words('english'))
-        text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'])
-        text = ' '.join(element.get_text().lower() for element in text_elements)
-        words = re.findall(r'\b\w+\b', text)
-        words = [word for word in words if len(word) >= min_length and word.isalpha() and word not in stop_words]
-        word_counts = Counter(words)
-        total_words = len(words)
-        keyword_density = {word: (count / total_words * 100) for word, count in word_counts.items() if total_words > 0}
-        return dict(sorted(keyword_density.items(), key=lambda x: x[1], reverse=True)[:10])
+        text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'span'])
+        text = ' '.join(el.get_text().lower() for el in text_elements)
+        words = re.findall(r'\\b\\w+\\b', text)
+        words = [w for w in words if len(w) >= min_length and w not in stop_words]
+        count = Counter(words)
+        total = sum(count.values())
+        return {k: (v / total * 100) for k, v in count.most_common(10)} if total else {}
 
     def check_broken_links(self) -> List[Dict[str, str]]:
-        broken_links = []
         if not self.soup:
-            return broken_links
+            return []
+        broken = []
         links = self.soup.find_all('a', href=True)
         for link in links:
-            href = link['href']
-            full_url = urljoin(self.url, href)
+            href = urljoin(self.url, link['href'])
             try:
-                response = requests.head(full_url, headers=self.headers, timeout=5, allow_redirects=True)
-                if response.status_code >= 400:
-                    broken_links.append({'url': full_url, 'status': response.status_code})
-            except requests.RequestException:
-                broken_links.append({'url': full_url, 'status': 'Failed to connect'})
-        return broken_links
+                r = requests.head(href, timeout=5, allow_redirects=True)
+                if r.status_code >= 400:
+                    broken.append({'url': href, 'status': str(r.status_code)})
+            except:
+                broken.append({'url': href, 'status': 'Failed'})
+        return broken
 
     def audit_on_page_seo(self) -> Dict[str, str]:
-        audit_results = {}
+        results = {}
         if not self.soup:
-            return audit_results
-        h1_tags = self.soup.find_all('h1')
-        audit_results['h1_status'] = f"Found {len(h1_tags)} H1 tags" if h1_tags else "No H1 tag found"
-        images = self.soup.find_all('img')
-        missing_alt = [img for img in images if not img.get('alt')]
-        audit_results['image_alt_status'] = f"{len(missing_alt)} images missing alt text" if missing_alt else "All images have alt text"
-        meta_desc = self.extract_meta_tags().get('description', '')
-        desc_length = len(meta_desc) if meta_desc != 'No description found' else 0
-        audit_results['meta_description_length'] = f"Description length: {desc_length} (Ideal: 120-160)" if desc_length else "No meta description"
-        return audit_results
+            return results
+        h1s = self.soup.find_all('h1')
+        results['h1_status'] = f"Found {len(h1s)} H1 tag(s)" if h1s else "No H1 tag found"
+        imgs = self.soup.find_all('img')
+        missing = sum(1 for img in imgs if not img.get('alt'))
+        results['image_alt_status'] = f"{missing} images missing alt text" if missing else "All images have alt text"
+        desc = self.extract_meta_tags().get('description', '')
+        results['meta_description_length'] = f"Description length: {len(desc)}" if desc else "No meta description"
+        return results
 
-    def analyze_content_length(self) -> Dict[str, any]:
+    def analyze_content_length(self) -> Dict[str, int]:
         if not self.soup:
             return {'word_count': 0}
-        text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-        text = ' '.join(element.get_text() for element in text_elements)
-        words = re.findall(r'\b\w+\b', text)
+        tags = self.soup.find_all(['p', 'h1', 'h2', 'h3'])
+        text = ' '.join(t.get_text() for t in tags)
+        words = re.findall(r'\\b\\w+\\b', text)
         return {'word_count': len(words)}
 
-    def analyze_internal_links(self) -> Dict[str, any]:
+    def analyze_internal_links(self) -> Dict[str, int]:
         if not self.soup:
             return {'internal_link_count': 0}
-        base_domain = re.match(r'https?://[^/]+', self.url).group(0)
+        domain = re.match(r'https?://[^/]+', self.url).group(0)
         links = self.soup.find_all('a', href=True)
-        internal_links = [link['href'] for link in links if link['href'].startswith(base_domain) or link['href'].startswith('/')]
-        return {'internal_link_count': len(internal_links)}
+        internal = [l['href'] for l in links if l['href'].startswith('/') or l['href'].startswith(domain)]
+        return {'internal_link_count': len(internal)}
 
     def check_page_speed(self) -> Dict[str, any]:
-        speed_data = {'response_time': self.response_time if self.response_time else 0.0}
+        data = {'response_time': round(self.response_time or 0, 2)}
         if self.api_key:
             try:
                 service = build('pagespeedonline', 'v5', developerKey=self.api_key)
                 result = service.pagespeedapi().runpagespeed(url=self.url, strategy=self.strategy).execute()
-                lighthouse = result['lighthouseResult']
-                speed_data['performance_score'] = lighthouse['categories']['performance']['score'] * 100
-                speed_data['recommendations'] = [
-                    audit['title'] for audit in lighthouse['audits'].values()
-                    if 'title' in audit and audit.get('score', 1) < 0.9
-                ][:3]
+                score = result['lighthouseResult']['categories']['performance']['score'] * 100
+                data['performance_score'] = score
+                audits = result['lighthouseResult']['audits']
+                tips = [v['title'] for v in audits.values() if 'title' in v and v.get('score', 1) < 0.9]
+                data['recommendations'] = tips[:3]
             except HttpError as e:
-                logging.error(f"PageSpeed API error: {e}")
-                speed_data['error'] = "Failed to fetch PageSpeed data—check your API key."
-        return speed_data
+                data['error'] = str(e)
+        return data
 
     def run_seo_analysis(self) -> Dict[str, any]:
         if not self.fetch_page():
-            return {'error': 'Failed to fetch page'}
+            return {'error': 'Failed to fetch the page.'}
         return {
             'meta_tags': self.extract_meta_tags(),
             'keyword_density': self.analyze_keyword_density(),
@@ -148,3 +142,45 @@ class SEOTool:
             'internal_links': self.analyze_internal_links(),
             'page_speed': self.check_page_speed()
         }
+
+# -------------------- STREAMLIT UI -------------------------
+
+def main():
+    st.set_page_config(page_title='SEO Analyzer', layout='wide')
+    st.title(\"🔍 SEO Audit Tool\")
+    url = st.text_input(\"Enter URL:\", \"https://example.com\")
+    api_key = st.text_input(\"Google PageSpeed API Key (optional):\", type='password')
+    strategy = st.selectbox(\"Choose PageSpeed Strategy\", [\"desktop\", \"mobile\"])
+
+    if st.button(\"Run SEO Audit\") and url:
+        tool = SEOTool(url, api_key=api_key, strategy=strategy)
+        with st.spinner(\"Analyzing...\"):
+            result = tool.run_seo_analysis()
+        if 'error' in result:
+            st.error(result['error'])
+            return
+
+        st.subheader(\"Meta Tags\")
+        st.json(result['meta_tags'])
+
+        st.subheader(\"Top Keywords\")
+        st.write(result['keyword_density'])
+
+        st.subheader(\"Broken Links\")
+        if result['broken_links']:
+            st.write(result['broken_links'])
+        else:
+            st.success(\"No broken links found.\")
+
+        st.subheader(\"On-Page SEO Check\")
+        st.json(result['on_page_audit'])
+
+        st.subheader(\"Content Length\")
+        st.write(f\"Word Count: {result['content_length']['word_count']}\")
+        st.subheader(\"Internal Links\")
+        st.write(f\"Internal Links: {result['internal_links']['internal_link_count']}\")
+        st.subheader(\"Page Speed\")
+        st.write(result['page_speed'])
+
+if __name__ == '__main__':
+    main()
