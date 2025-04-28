@@ -1,5 +1,7 @@
 import streamlit as st
 import requests
+import aiohttp
+import asyncio
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from collections import Counter
@@ -13,8 +15,12 @@ from googleapiclient.errors import HttpError
 import nltk
 from nltk.corpus import stopwords
 
-# Download stopwords for first run
-nltk.download('stopwords')
+# Conditional NLTK stopwords import
+try:
+    from nltk.corpus import stopwords
+except LookupError:
+    nltk.download('stopwords')
+    from nltk.corpus import stopwords
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -28,6 +34,7 @@ class SEOTool:
         self.soup = None
         self.content = None
         self.response_time = None
+        self.page_text = None  # Cache for text content
 
     def fetch_page(self) -> bool:
         try:
@@ -60,29 +67,40 @@ class SEOTool:
 
     def analyze_keyword_density(self, min_length=3) -> Dict[str, float]:
         if not self.soup:
+            logging.warning("No page content for keyword analysis")
+            return {}
+        if not self.page_text:
+            text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'span'])
+            self.page_text = ' '.join(el.get_text().lower() for el in text_elements if el.get_text()) or ""
+            logging.info(f"Extracted {len(self.page_text)} chars for keyword analysis")
+        if not self.page_text:
+            logging.warning("No text content for keyword analysis")
             return {}
         stop_words = set(stopwords.words('english'))
-        text_elements = self.soup.find_all(['p', 'h1', 'h2', 'h3', 'span'])
-        text = ' '.join(el.get_text().lower() for el in text_elements)
-        words = re.findall(r'\b\w+\b', text)
+        words = re.findall(r'\b\w+\b', self.page_text)
         words = [w for w in words if len(w) >= min_length and w not in stop_words]
         count = Counter(words)
         total = sum(count.values())
         return {k: (v / total * 100) for k, v in count.most_common(10)} if total else {}
 
-    def check_broken_links(self) -> List[Dict[str, str]]:
+    async def _check_link(self, session, href: str) -> Dict[str, str]:
+        try:
+            async with session.head(href, timeout=5, allow_redirects=True) as r:
+                if r.status >= 400:
+                    return {'url': href, 'status': str(r.status)}
+                return None
+        except:
+            return {'url': href, 'status': 'Failed'}
+
+    async def check_broken_links(self) -> List[Dict[str, str]]:
         if not self.soup:
             return []
         broken = []
-        links = self.soup.find_all('a', href=True)
-        for link in links:
-            href = urljoin(self.url, link['href'])
-            try:
-                r = requests.head(href, timeout=5, allow_redirects=True)
-                if r.status_code >= 400:
-                    broken.append({'url': href, 'status': str(r.status_code)})
-            except:
-                broken.append({'url': href, 'status': 'Failed'})
+        links = self.soup.find_all('a', href=True)[:10]  # Limit to 10 links
+        async with aiohttp.ClientSession(headers=self.headers) as session:
+            tasks = [self._check_link(session, urljoin(self.url, link['href'])) for link in links]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            broken = [r for r in results if r is not None]
         return broken
 
     def audit_on_page_seo(self) -> Dict[str, str]:
@@ -100,10 +118,16 @@ class SEOTool:
 
     def analyze_content_length(self) -> Dict[str, int]:
         if not self.soup:
+            logging.warning("No page content for content length analysis")
             return {'word_count': 0}
-        tags = self.soup.find_all(['p', 'h1', 'h2', 'h3'])
-        text = ' '.join(t.get_text() for t in tags)
-        words = re.findall(r'\b\w+\b', text)
+        if not self.page_text:
+            tags = self.soup.find_all(['p', 'h1', 'h2', 'h3'])
+            self.page_text = ' '.join(t.get_text() for t in tags if t.get_text()) or ""
+            logging.info(f"Extracted {len(self.page_text)} chars for content length")
+        if not self.page_text:
+            logging.warning("No text content for content length")
+            return {'word_count': 0}
+        words = re.findall(r'\b\w+\b', self.page_text)
         return {'word_count': len(words)}
 
     def analyze_internal_links(self) -> Dict[str, int]:
@@ -129,13 +153,15 @@ class SEOTool:
                 data['error'] = str(e)
         return data
 
-    def run_seo_analysis(self) -> Dict[str, any]:
+    async def run_seo_analysis(self) -> Dict[str, any]:
         if not self.fetch_page():
             return {'error': 'Failed to fetch the page.'}
+        # Run async broken links check
+        broken_links = await self.check_broken_links()
         return {
             'meta_tags': self.extract_meta_tags(),
             'keyword_density': self.analyze_keyword_density(),
-            'broken_links': self.check_broken_links(),
+            'broken_links': broken_links,
             'on_page_audit': self.audit_on_page_seo(),
             'content_length': self.analyze_content_length(),
             'internal_links': self.analyze_internal_links(),
@@ -185,57 +211,105 @@ def main():
     url = st.text_input("Enter URL:", "https://example.com")
     api_key = st.text_input("Google PageSpeed API Key (optional):", type='password')
     strategy = st.selectbox("Choose PageSpeed Strategy", ["desktop", "mobile"])
+    run_pagespeed = st.checkbox("Run PageSpeed Analysis (slower)", value=False)
 
     if st.button("Run SEO Audit") and url:
-        tool = SEOTool(url, api_key=api_key, strategy=strategy)
+        tool = SEOTool(url, api_key=api_key if run_pagespeed else None, strategy=strategy)
         with st.spinner("Analyzing..."):
-            result = tool.run_seo_analysis()
-        if 'error' in result:
-            st.error(result['error'])
-            return
+            # Progress bar
+            progress_bar = st.progress(0)
+            progress_steps = 7  # Number of analysis steps
+            progress = 0
 
-        col1, col2 = st.columns(2)
+            # Run async analysis
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(tool.run_seo_analysis())
+            progress += 1
+            progress_bar.progress(progress / progress_steps)
 
-        with col1:
-            st.subheader("Meta Tags")
-            st.json(result['meta_tags'])
+            if 'error' in result:
+                st.error(result['error'])
+                return
 
-        with col2:
-            st.subheader("On-Page SEO")
-            st.json(result['on_page_audit'])
+            # Display results
+            col1, col2 = st.columns(2)
 
-        with st.expander("Top Keywords"):
-            st.write(result['keyword_density'])
+            with col1:
+                st.subheader("Meta Tags")
+                st.json(result['meta_tags'])
+            progress += 1
+            progress_bar.progress(progress / progress_steps)
 
-        with st.expander("Broken Links"):
-            if result['broken_links']:
-                for link in result['broken_links']:
-                    st.markdown(f"- 🔗 `{link['url']}` — ❌ Status: {link['status']}")
+            with col2:
+                st.subheader("On-Page SEO")
+                st.json(result['on_page_audit'])
+            progress += 1
+            progress_bar.progress(progress / progress_steps)
+
+            with st.expander("Top Keywords"):
+                st.write(result['keyword_density'])
+            progress += 1
+            progress_bar.progress(progress / progress_steps)
+
+            with st.expander("Broken Links"):
+                if result['broken_links']:
+                    for link in result['broken_links']:
+                        st.markdown(f"- 🔗 `{link['url']}` — ❌ Status: {link['status']}")
+                else:
+                    st.success("No broken links found.")
+            progress += 1
+            progress_bar.progress(progress / progress_steps)
+
+            st.subheader("Content & Internal Links")
+            st.write(f"📄 Word Count: **{result['content_length']['word_count']}**")
+            st.write(f"🔗 Internal Links: **{result['internal_links']['internal_link_count']}**")
+            progress += 1
+            progress_bar.progress(progress / progress_steps)
+
+            st.subheader("Page Speed")
+            st.write(f"⏱️ Response Time: {result['page_speed']['response_time']} seconds")
+            if 'performance_score' in result['page_speed']:
+                score = result['page_speed']['performance_score']
+                st.metric("PageSpeed Score", f"{score}/100")
+                st.progress(int(score))
+                if result['page_speed'].get('recommendations'):
+                    st.write("Optimization Suggestions:")
+                    for tip in result['page_speed']['recommendations']:
+                        st.markdown(f"- ⚡ {tip}")
+            elif 'error' in result['page_speed']:
+                st.error(result['page_speed']['error'])
+            progress += 1
+            progress_bar.progress(progress / progress_steps)
+
+            st.subheader("📋 SEO To-Do List")
+            todo_list = generate_todo_list(result)
+            if todo_list:
+                for task in todo_list:
+                    st.markdown(f"- {task}")
             else:
-                st.success("No broken links found.")
+                st.success("Your page is in excellent SEO shape! ✅")
 
-        st.subheader("Content & Internal Links")
-        st.write(f"📄 Word Count: **{result['content_length']['word_count']}**")
-        st.write(f"🔗 Internal Links: **{result['internal_links']['internal_link_count']}**")
-
-        st.subheader("Page Speed")
-        st.write(f"⏱️ Response Time: {result['page_speed']['response_time']} seconds")
-        if 'performance_score' in result['page_speed']:
-            score = result['page_speed']['performance_score']
-            st.metric("PageSpeed Score", f"{score}/100")
-            st.progress(int(score))
-            if result['page_speed'].get('recommendations'):
-                st.write("Optimization Suggestions:")
-                for tip in result['page_speed']['recommendations']:
-                    st.markdown(f"- ⚡ {tip}")
-
-        st.subheader("📋 SEO To-Do List")
-        todo_list = generate_todo_list(result)
-        if todo_list:
-            for task in todo_list:
-                st.markdown(f"- {task}")
-        else:
-            st.success("Your page is in excellent SEO shape! ✅")
+            # Export results
+            st.subheader("Export Results")
+            export_data = {
+                'Meta Tags': [f"{k}: {v}" for k, v in result['meta_tags'].items()],
+                'Keyword Density': [f"{k}: {v:.2f}%" for k, v in result['keyword_density'].items()],
+                'Broken Links': [f"{link['url']} (Status: {link['status']})" for link in result['broken_links']] or ['None'],
+                'On-Page SEO': [f"{k}: {v}" for k, v in result['on_page_audit'].items()],
+                'Content Length': [f"Word Count: {result['content_length']['word_count']}"],
+                'Internal Links': [f"Count: {result['internal_links']['internal_link_count']}"],
+                'Page Speed': [f"Response Time: {result['page_speed']['response_time']}s"] + ([f"Score: {result['page_speed']['performance_score']}/100"] if 'performance_score' in result['page_speed'] else []),
+                'To-Do List': todo_list
+            }
+            df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in export_data.items()]))
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="Download as CSV",
+                data=csv,
+                file_name=f"seo_analysis_{url.split('//')[1].replace('/', '_')}.csv",
+                mime="text/csv"
+            )
 
 if __name__ == "__main__":
     main()
