@@ -207,6 +207,167 @@ def generate_todo_list(result):
 
 def main():
     st.set_page_config(page_title='SEO Analyzer', layout='wide')
+    
+    # Inject custom CSS
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            color: #1a202c;
+            line-height: 1.6;
+        }
+        
+        .main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #2d3748;
+            text-align: center;
+            margin-bottom: 2rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stTextInput > div > div > input {
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 0.75rem;
+            font-size: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: border-color 0.3s ease;
+        }
+        
+        .stTextInput > div > div > input:focus {
+            border-color: #3182ce;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.2);
+        }
+        
+        .stSelectbox > div > div > select {
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 0.75rem;
+            font-size: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stButton > button {
+            background: linear-gradient(90deg, #3182ce 0%, #2b6cb0 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .stButton > button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stProgress > div > div {
+            background-color: #3182ce !important;
+            border-radius: 4px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .stExpander {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f7fafc;
+        }
+        
+        .stExpander > div > div {
+            background: #edf2f7;
+            border-radius: 8px 8px 0 0;
+            padding: 0.75rem;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0;
+            transition: background 0.2s ease;
+        }
+        
+        .todo-item:hover {
+            background: #edf2f7;
+            border-radius: 4px;
+        }
+        
+        .todo-item::before {
+            content: '✔️';
+            margin-right: 0.5rem;
+            font-size: 1rem;
+        }
+        
+        .stDownloadButton > button {
+            background: linear-gradient(90deg, #38a169 0%, #2f855a 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .stDownloadButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        @media (max-width: 768px) {
+            .main {
+                padding: 1rem;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+            h2 {
+                font-size: 1.25rem;
+            }
+            .stButton > button, .stDownloadButton > button {
+                width: 100%;
+                padding: 0.75rem;
+            }
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.title("🔍 SEO Audit Tool")
     url = st.text_input("Enter URL:", "https://example.com")
     api_key = st.text_input("Google PageSpeed API Key (optional):", type='password')
@@ -237,13 +398,17 @@ def main():
 
             with col1:
                 st.subheader("Meta Tags")
+                st.markdown('<div class="card">', unsafe_allow_html=True)
                 st.json(result['meta_tags'])
+                st.markdown('</div>', unsafe_allow_html=True)
             progress += 1
             progress_bar.progress(progress / progress_steps)
 
             with col2:
                 st.subheader("On-Page SEO")
+                st.markdown('<div class="card">', unsafe_allow_html=True)
                 st.json(result['on_page_audit'])
+                st.markdown('</div>', unsafe_allow_html=True)
             progress += 1
             progress_bar.progress(progress / progress_steps)
 
@@ -262,12 +427,15 @@ def main():
             progress_bar.progress(progress / progress_steps)
 
             st.subheader("Content & Internal Links")
+            st.markdown('<div class="card">', unsafe_allow_html=True)
             st.write(f"📄 Word Count: **{result['content_length']['word_count']}**")
             st.write(f"🔗 Internal Links: **{result['internal_links']['internal_link_count']}**")
+            st.markdown('</div>', unsafe_allow_html=True)
             progress += 1
             progress_bar.progress(progress / progress_steps)
 
             st.subheader("Page Speed")
+            st.markdown('<div class="card">', unsafe_allow_html=True)
             st.write(f"⏱️ Response Time: {result['page_speed']['response_time']} seconds")
             if 'performance_score' in result['page_speed']:
                 score = result['page_speed']['performance_score']
@@ -279,16 +447,19 @@ def main():
                         st.markdown(f"- ⚡ {tip}")
             elif 'error' in result['page_speed']:
                 st.error(result['page_speed']['error'])
+            st.markdown('</div>', unsafe_allow_html=True)
             progress += 1
             progress_bar.progress(progress / progress_steps)
 
             st.subheader("📋 SEO To-Do List")
+            st.markdown('<div class="card">', unsafe_allow_html=True)
             todo_list = generate_todo_list(result)
             if todo_list:
                 for task in todo_list:
-                    st.markdown(f"- {task}")
+                    st.markdown(f'<div class="todo-item">{task}</div>', unsafe_allow_html=True)
             else:
                 st.success("Your page is in excellent SEO shape! ✅")
+            st.markdown('</div>', unsafe_allow_html=True)
 
             # Export results
             st.subheader("Export Results")
